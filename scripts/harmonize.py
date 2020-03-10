@@ -32,7 +32,7 @@ def harmonize_rows(ref, d):
     return result
 
 
-def harmonize(rt_path, surps_path):
+def harmonize(rt_path, surps_path, output_path):
   
   try:
     sprt = pd.read_csv(rt_path, index_col=False)
@@ -52,7 +52,7 @@ def harmonize(rt_path, surps_path):
    "s011", "s012", "s013", "s014", "s015", "s016", "s017", "s018", "s019", "s020", "s021", "s022", "s023", "s024", "s025",
    "s026", "s027", "s028", "s029", "s030", "s031", "s032", "s033", "s034", "s035", "mean_rt"]
   df = df.drop(["Word_2"], axis=1)
-  df.to_csv("../data/harmonized_results.csv")
+  df.to_csv(output_path)
 
 if __name__ == "__main__":
   harmonize(*sys.argv[1:])
