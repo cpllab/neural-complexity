@@ -584,6 +584,8 @@ if not args.test and not args.interact:
             # Save the model.
             if epoch % args.save_every == 0:
                 model_file = args.model_file.replace(".pt", f"-{epoch}.pt")
+                with open(args.model_file, 'wb') as f:
+                    torch.save(model, f)
 
             # Anneal the learning rate if no more improvement in the validation dataset.
             if best_val_loss is not None and val_loss > best_val_loss:
