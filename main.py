@@ -13,6 +13,7 @@ import torch
 import torch.nn as nn
 import data
 import model
+from tqdm import tqdm, trange
 
 try:
     from progress.bar import Bar
@@ -68,6 +69,8 @@ parser.add_argument('--init', type=float, default=None,
 # Data parameters
 parser.add_argument('--model_file', type=str, default='model.pt',
                     help='path to save the final model')
+parser.add_argument("--save_every", type=int, default=5, metavar="N",
+                    help="Save a checkpoint every N epochs.")
 parser.add_argument('--adapted_model', type=str, default='adaptedmodel.pt',
                     help='new path to save the final adapted model')
 parser.add_argument('--data_dir', type=str, default='./data/wikitext-2',
@@ -119,7 +122,7 @@ parser.add_argument('--nopp', action='store_true',
                     help='suppress evaluation perplexity output')
 parser.add_argument('--nocheader', action='store_true',
                     help='suppress complexity header')
-parser.add_argument('--csep', type=str, default=' ',
+parser.add_argument('--csep', type=str, default="\t",
                     help='change the separator in the complexity output')
 
 parser.add_argument('--guess', action='store_true',
@@ -351,9 +354,10 @@ def get_complexity(state, obs, sentid):
                                   str(max(0, float(Hs[max(corpuspos-1, 0)])-float(Hs[corpuspos]))),
                                   str(outputguesses)]))
         else:
-            print(args.csep.join([str(word), str(sentid), str(corpuspos), str(len(word)),
-                                  str(float(surp)), str(float(Hs[corpuspos])),
-                                  str(max(0, float(Hs[max(corpuspos-1, 0)])-float(Hs[corpuspos])))]))
+            #print(args.csep.join([str(word), str(sentid), str(corpuspos), str(len(word)),
+            #                      str(float(surp)), str(float(Hs[corpuspos])),
+            #                      str(max(0, float(Hs[max(corpuspos-1, 0)])-float(Hs[corpuspos])))]))
+            print(args.csep.join([str(sentid + 1), str(corpuspos + 1), str(word), str(float(surp))]))
 
 def apply(func, apply_dimension):
     ''' Applies a function along a given dimension '''
@@ -413,23 +417,26 @@ def test_evaluate(test_sentences, data_source):
 
     if args.words:
         if not args.nocheader:
-            if args.complexn == ntokens:
-                print('word{0}sentid{0}sentpos{0}wlen{0}surp{0}entropy{0}entred'.format(args.csep), end='')
-            else:
-                print('word{0}sentid{0}sentpos{0}wlen{0}surp{1}{0}entropy{1}{0}entred{1}'.format(args.csep, args.complexn), end='')
-            if args.guess:
-                for i in range(args.guessn):
-                    print('{0}guess'.format(args.csep)+str(i), end='')
-                    if args.guessscores:
-                        print('{0}gscore'.format(args.csep)+str(i), end='')
-                    elif args.guessprobs:
-                        print('{0}gprob'.format(args.csep)+str(i), end='')
-                    elif args.guessratios:
-                        print('{0}gratio'.format(args.csep)+str(i), end='')
+            print("sentence_id{0}token_id{0}token{0}surprisal".format(args.csep), end="")
+
+            #if args.complexn == ntokens:
+            #    print('word{0}sentid{0}sentpos{0}wlen{0}surp{0}entropy{0}entred'.format(args.csep), end='')
+            #else:
+            #    print('word{0}sentid{0}sentpos{0}wlen{0}surp{1}{0}entropy{1}{0}entred{1}'.format(args.csep, args.complexn), end='')
+#
+            #if args.guess:
+            #    for i in range(args.guessn):
+            #        print('{0}guess'.format(args.csep)+str(i), end='')
+            #        if args.guessscores:
+            #            print('{0}gscore'.format(args.csep)+str(i), end='')
+            #        elif args.guessprobs:
+            #            print('{0}gprob'.format(args.csep)+str(i), end='')
+            #        elif args.guessratios:
+            #            print('{0}gratio'.format(args.csep)+str(i), end='')
             sys.stdout.write('\n')
     if PROGRESS:
         bar = Bar('Processing', max=len(data_source))
-    for i in range(len(data_source)):
+    for i in trange(len(data_source)):
         sent_ids = data_source[i].to(device)
         # We predict all words but the first, so determine loss for those
         if test_sentences:
@@ -519,7 +526,7 @@ def evaluate(data_source):
             hidden = repackage_hidden(hidden)
     return total_loss / len(data_source)
 
-def train():
+def train(epoch=0):
     """ Train language model """
     # Turn on training mode which enables dropout.
     model.train()
@@ -549,8 +556,8 @@ def train():
         if batch % args.log_interval == 0 and batch > 0:
             cur_loss = total_loss / args.log_interval
             elapsed = time.time() - start_time
-            print('| epoch {:3d} | {:5d}/{:5d} batches | lr {:02.2f} | ms/batch {:5.2f} | '
-                  'loss {:5.2f} | ppl {:8.2f}'.format(
+            tqdm.write('| epoch {:3d} | {:5d}/{:5d} batches | lr {:02.2f} | ms/batch {:5.2f} | '
+                       'loss {:5.2f} | ppl {:8.2f}'.format(
                       epoch, batch, len(train_data) // args.bptt, lr,
                       elapsed * 1000 / args.log_interval, cur_loss, math.exp(cur_loss)))
             total_loss = 0.
@@ -564,28 +571,31 @@ no_improvement = 0
 # At any point you can hit Ctrl + C to break out of training early.
 if not args.test and not args.interact:
     try:
-        for epoch in range(1, args.epochs+1):
+        for epoch in trange(1, args.epochs+1, desc="Training epochs"):
             epoch_start_time = time.time()
-            train()
+            train(epoch)
             val_loss = evaluate(val_data)
-            print('-' * 89)
-            print('| end of epoch {:3d} | time: {:5.2f}s | lr: {:4.8f} | '
-                  'valid ppl {:8.2f}'.format(epoch, (time.time() - epoch_start_time),
+            tqdm.write('-' * 89)
+            tqdm.write('| end of epoch {:3d} | time: {:5.2f}s | lr: {:4.8f} | '
+                       'valid ppl {:8.2f}'.format(epoch, (time.time() - epoch_start_time),
                                              lr, math.exp(val_loss)))
-            print('-' * 89)
-            # Save the model if the validation loss is the best we've seen so far.
-            if not best_val_loss or val_loss < best_val_loss:
-                no_improvement = 0
-                with open(args.model_file, 'wb') as f:
-                    torch.save(model, f)
-                    best_val_loss = val_loss
-            else:
-                # Anneal the learning rate if no more improvement in the validation dataset.
+            tqdm.write('-' * 89)
+
+            # Save the model.
+            if epoch % args.save_every == 0:
+                model_file = args.model_file.replace(".pt", f"-{epoch}.pt")
+
+            # Anneal the learning rate if no more improvement in the validation dataset.
+            if best_val_loss is not None and val_loss > best_val_loss:
                 no_improvement += 1
                 if no_improvement >= 3:
                     print('Covergence achieved! Ending training early')
                     break
                 lr /= 4.0
+            else:
+                no_improvement = 0
+                best_val_loss = val_loss
+
     except KeyboardInterrupt:
         print('-' * 89)
         print('Exiting from training early')
